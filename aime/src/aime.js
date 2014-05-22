@@ -71,6 +71,11 @@ function act(sprite) {
     perform(sprite, currentObjective || getNewObjective(sprite));
 }
 
+function reset(sprite) {
+    sprite.tint = 0xFFFFFF;
+    delete sprite.data.objective;
+}
+
 function getNewObjective(sprite) {
     var newObjectiveValue = Math.random(),
         newObjective;
@@ -83,6 +88,8 @@ function getNewObjective(sprite) {
         } while(target === sprite);
 
         newObjective = { type: 'follow', data: {target: target} };
+
+        sprite.tint = 0x990000;
     } else if(newObjectiveValue < 0.05) {
         newObjective = { type: 'spin', data: { rotateTo: (2 * Math.PI) }};
     } else {
@@ -137,7 +144,7 @@ function perform(sprite, objective) {
     }
 
     if(objective.data.status === 'completed') {
-        delete sprite.data.objective;
+        reset(sprite);
     }
 }
 
