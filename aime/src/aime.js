@@ -68,13 +68,28 @@ function animate() {
 
 function act(sprite) {
     var currentObjective = sprite.data && sprite.data.objective;
-    perform(sprite, currentObjective || newObjective(sprite));
+    perform(sprite, currentObjective || getNewObjective(sprite));
 }
-function newObjective(sprite) {
-    var newObjective = Math.random() < 0.3 ?
-    { type: 'spin', data: { rotateTo: (2 * Math.PI) }} :
-    { type: 'move', data: { destination: boundToStage([ sprite.position.x + (Math.random() * 80) - 40,
-                                           sprite.position.y + (Math.random() * 80) - 40]) }};
+
+function getNewObjective(sprite) {
+    var newObjectiveValue = Math.random(),
+        newObjective;
+
+    if(newObjectiveValue < 0.01) {
+        var target;
+        do {
+            var index = Math.floor(Math.random() * game.actors.length);
+            target = game.actors[index];
+        } while(target === sprite);
+
+        newObjective = { type: 'follow', data: {target: target} };
+    } else if(newObjectiveValue < 0.05) {
+        newObjective = { type: 'spin', data: { rotateTo: (2 * Math.PI) }};
+    } else {
+        newObjective = { type: 'move', data: { destination: boundToStage([ sprite.position.x + (Math.random() * 80) - 40,
+                sprite.position.y + (Math.random() * 80) - 40]) }};
+    }
+
     if(_.isUndefined(sprite.data)) {
         sprite.data = {};
     }
@@ -84,7 +99,7 @@ function newObjective(sprite) {
 
 function boundToStage(point) {
     var x = point[0], y = point[1], x_b, y_b;
-    
+
     x_b = (x < 0) ? 0 : (x > width) ? width : x;
     y_b = (y < 0) ? 0 : (y > height) ? height: y;
 
@@ -110,6 +125,15 @@ function perform(sprite, objective) {
                 objective.data.status = 'completed';
             }
             break;
+        case 'follow':
+            sprite.position.x += (sprite.position.x === objective.data.target.position.x) ? 0 :
+                signOf(objective.data.target.position.x - sprite.position.x) * 1;
+            sprite.position.y += (sprite.position.y === objective.data.target.position.y) ? 0 :
+                signOf(objective.data.target.position.y - sprite.position.y) * 1;
+            if(distance([sprite.position.x, sprite.position.y], [objective.data.target.position.x, objective.data.target.position.y]) < 2) {
+                objective.data.status = 'completed';
+            }
+
     }
 
     if(objective.data.status === 'completed') {
@@ -141,7 +165,3 @@ function move(sprite) {
         sprite.position.x -= 1;
     });
 }
-
-
-
-
