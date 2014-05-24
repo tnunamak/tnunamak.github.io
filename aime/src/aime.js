@@ -17,6 +17,7 @@ var HEALTH_BAR_INDEX = 0,
     BASE_MAX_HEALTH = 5000,
     MAX_DAMAGE = 50,
     MAX_HEALING = 50,
+    SPAWN_COOLDOWN_MS = 10000,
     ATTACK_COOLDOWN_MS = 500,
     HEAL_COOLDOWN_MS = 500,
     MELEE_RANGE = 30.0,
@@ -49,6 +50,7 @@ bootstrap();
 function bootstrap() {
     createTeams();
     createActors();
+    var sound = new Howl({  urls: ['sounds/fishy.mp3'], autoplay: true, loop: true}).play();
 }
 
 function createTeams() {
@@ -62,7 +64,7 @@ function createTeam() {
 
     sprite.addChildAt(createHealthBar(), HEALTH_BAR_INDEX);
 
-    //placeSpriteAt(sprite, Math.random() * width, Math.random() * height);
+    placeSpriteAt(sprite, Math.random() * width, Math.random() * height);
 
     return {
         base: {
@@ -191,9 +193,9 @@ function animateActor(sprite) {
 function animate() {
     requestAnimFrame(animate);
 
-    /*_.each(game.teams, function(team) {
-     drawHealth(team.base.sprite, team.base.health);
-     });*/
+    _.each(game.teams, function(team) {
+        drawHealth(team.base.sprite, team.base.health);
+    });
 
     _.each(game.actors, function (bunny) {
         drawHealth(bunny, bunny.data.state.health);
@@ -337,8 +339,11 @@ function getNewObjective(sprite) {
                 x: sprite.position.x + getRandomValueCenteredAtZero(width / 2),
                 y: sprite.position.y + getRandomValueCenteredAtZero(height / 2)}) }};
             break;
+        case 'be_dead':
+            newObjective = { type: 'be_dead', data: { endTime: Date.now() + Math.round(Math.random() * 7000) + 3000 }};
+            break;
         default:
-            newObjective = { type: 'wait', data: { endTime: Date.now() + Math.round(Math.random() * 7000) + 3000 }}
+            newObjective = { type: 'wait', data: { endTime: Date.now() + SPAWN_COOLDOWN_MS }}
 
     }
 
@@ -416,6 +421,15 @@ function perform(sprite, objective) {
             if (objective.data.endTime < Date.now()) {
                 clearObjective(sprite);
             }
+            break;
+        case 'be_dead':
+            if (objective.data.endTime < Date.now()) {
+                revive(sprite);
+                sprite.position.x = sprite.data.state.team.base.sprite.position.x + ((Math.random() * 30) - 15);
+                sprite.position.y = sprite.data.state.team.base.sprite.position.y + ((Math.random() * 30) - 15);
+                clearObjective(sprite);
+            }
+            break;
 
     }
 }
@@ -439,8 +453,16 @@ function withinErrorOf(error, a, b) {
 
 function die(sprite) {
     clearObjective(sprite);
+    sprite.data.trueTexture = sprite.texture;
     sprite.setTexture(DEAD_CHARACTER_TEXTURE);
     sprite.stop();
+}
+
+function revive(sprite) {
+    console.log("reviving");
+    sprite.data.state.health = 1;
+    sprite.setTexture(sprite.data.trueTexture);
+    //sprite.start();
 }
 
 function applyHeal(sprite, heal) {
