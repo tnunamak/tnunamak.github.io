@@ -37,11 +37,14 @@ document.body.appendChild(renderer.view);
 
 requestAnimFrame(animate);
 
-var teamCharacterTextures = [['images/bunny.png', 'images/bunny2.png', 'images/bunny3.png'],
-    ['images/monkey.png']];
+var teamCharacterTextures = [
+    ['images/bunny.png', 'images/bunny2.png', 'images/bunny3.png'],
+    ['images/monkey.png']
+];
 
 
 var DEAD_CHARACTER_TEXTURE = PIXI.Texture.fromImage("images/bones.png");
+var DEAD_TOWER_TEXTURE = PIXI.Texture.fromImage("images/rubble.png");
 
 var game = {};
 
@@ -60,24 +63,29 @@ function createTeams() {
 function createTeam() {
     var sprite = new PIXI.Sprite(PIXI.Texture.fromImage('images/tower.png'));
 
-    sprite.scale = new PIXI.Point(.25,.25);
+    sprite.scale = new PIXI.Point(.25, .25);
 
     sprite.addChildAt(createHealthBar(), HEALTH_BAR_INDEX);
 
     placeSpriteAt(sprite, Math.random() * width, Math.random() * height);
 
     return {
-        base: {
-            sprite: sprite,
-            health: 1,
-            maxHealth: BASE_MAX_HEALTH
-        },
-        color: getRandomColor()
+        base: _.extend(sprite, {
+            data: {
+                stats: {
+                    maxHealth: BASE_MAX_HEALTH
+                },
+                state: {
+                    health: 1,
+                    color: getRandomColor()
+                }
+            }
+        })
     };
 }
 
 function buildAnimatedCharacter(images) {
-    return new PIXI.MovieClip(_.map(images, function(image) {
+    return new PIXI.MovieClip(_.map(images, function (image) {
         return PIXI.Texture.fromImage(image);
     }));
 }
@@ -98,7 +106,7 @@ function createBunny() {
             healing: Math.random(),
             defense: Math.random(),
             team: Math.random(),
-            speed: Math.random(),
+            speed: (Math.random() * 0.7) + 0.3,
             strength: Math.random(),
             maxHealth: (Math.random() * (HIGH_HEALTH - LOW_HEALTH)) + LOW_HEALTH
         }
@@ -171,15 +179,15 @@ function getLabel(sprite) {
 function animateActor(sprite) {
     var bounceRadius = .1;
     var bounceDurationSec = 1;
-    var updateRate = 60/60;
+    var updateRate = 60 / 60;
 
-    if(Math.random() < updateRate) {
+    if (Math.random() < updateRate) {
 
         var bounceAmount = bounceRadius / ( framerate * bounceDurationSec) / updateRate;
 
         var bounceDirection = sprite.data.lastAnchor ? signOf(sprite.anchor.y - sprite.data.lastAnchor.y) : 1;
 
-        if(Math.abs(sprite.anchor.y) > bounceRadius) {
+        if (Math.abs(sprite.anchor.y) > bounceRadius) {
             bounceDirection *= -1;
         }
 
@@ -193,8 +201,8 @@ function animateActor(sprite) {
 function animate() {
     requestAnimFrame(animate);
 
-    _.each(game.teams, function(team) {
-        drawHealth(team.base.sprite, team.base.health);
+    _.each(game.teams, function (team) {
+        drawHealth(team.base, team.base.data.state.health);
     });
 
     _.each(game.actors, function (bunny) {
@@ -226,15 +234,15 @@ function mean() {
     }, 0) / arguments.length;
 }
 
-function nearestMeetsCondition(sprite, condition) {
+function closestMeetsCondition(sprite, listOfSprites, condition) {
     var closestDistance;
     var closest;
-    _.each(game.actors, function (actor) {
-        if (condition(sprite, actor)) {
-            var dist = distance(sprite.position, actor.position);
+    _.each(listOfSprites, function (item) {
+        if (condition(sprite, item)) {
+            var dist = distance(sprite.position, item.position);
             if (_.isUndefined(closestDistance) || dist < closestDistance) {
                 closestDistance = dist;
-                closest = actor;
+                closest = item;
             }
         }
     });
@@ -242,15 +250,29 @@ function nearestMeetsCondition(sprite, condition) {
 }
 
 function closestEnemy(sprite) {
-    return nearestMeetsCondition(sprite, function (subject, other) {
+    return closestMeetsCondition(sprite, game.actors, function (subject, other) {
         return subject.data.state.team != other.data.state.team && other.data.state.health > 0;
     });
 }
 
+function closestEnemyTower(sprite) {
+    var enemyTowers = _.map(game.teams, function (team) {
+        return team.base;
+    });
+
+    return closestMeetsCondition(sprite, enemyTowers, function (subject, other) {
+        return subject.data.state.team.base != other && other.data.state.health > 0;
+    });
+}
+
 function closestAlly(sprite) {
-    return nearestMeetsCondition(sprite, function (subject, other) {
+    return closestMeetsCondition(sprite, game.actors, function (subject, other) {
         return subject != other && subject.data.state.team === other.data.state.team && other.data.state.health > 0;
     });
+}
+
+function chooseAttackTarget(sprite) {
+    return closestEnemy(sprite) || closestEnemyTower(sprite);
 }
 
 var goals = [
@@ -263,8 +285,9 @@ var goals = [
     {
         id: 'attack',
         score: function (sprite) {
-            var target = closestEnemy(sprite);
-            if(_.isUndefined(target)) {
+            var target = chooseAttackTarget(sprite);
+
+            if (_.isUndefined(target)) {
                 return 0;
             }
             var closeness = Math.min(1, CLOSE_DISTANCE / distance(sprite.position, target.position));
@@ -288,7 +311,7 @@ var goals = [
     {
         id: 'explore',
         score: function (sprite) {
-            return sprite.data.stats.speed;
+            return 0;//sprite.data.stats.speed;
         }
     },
     {
@@ -340,10 +363,10 @@ function getNewObjective(sprite) {
                 y: sprite.position.y + getRandomValueCenteredAtZero(height / 2)}) }};
             break;
         case 'be_dead':
-            newObjective = { type: 'be_dead', data: { endTime: Date.now() + Math.round(Math.random() * 7000) + 3000 }};
+            newObjective = { type: 'be_dead', data: { endTime: Date.now() + SPAWN_COOLDOWN_MS }};
             break;
         default:
-            newObjective = { type: 'wait', data: { endTime: Date.now() + SPAWN_COOLDOWN_MS }}
+            newObjective = { type: 'wait', data: { endTime: Date.now() + Math.round(Math.random() * 7000) + 3000 }}
 
     }
 
@@ -357,15 +380,15 @@ function perform(sprite, objective) {
 
     switch (objective.type) {
         case 'attack':
-            var target = closestEnemy(sprite);
-            if(_.isUndefined(target)) {
+            var target = chooseAttackTarget(sprite);
+            if (_.isUndefined(target)) {
                 clearObjective(sprite);
                 return;
             }
 
             var distanceToTarget = distance(sprite.position, target.position);
-            if(distanceToTarget < ATTACK_RANGE) {
-                if(objective.data.cooldownEndTime < Date.now()){
+            if (distanceToTarget < ATTACK_RANGE) {
+                if (objective.data.cooldownEndTime < Date.now()) {
                     applyDamage(target, sprite.data.stats.strength * MAX_DAMAGE);
                     objective.data.cooldownEndTime = Date.now() + objective.data.cooldownLength;
                 }
@@ -379,12 +402,12 @@ function perform(sprite, objective) {
 
             break;
         case 'heal':
-            if(objective.data.cooldownEndTime < Date.now()) {
+            if (objective.data.cooldownEndTime < Date.now()) {
                 applyHeal(objective.data.target, sprite.data.stats.healing * MAX_HEALING);
                 objective.data.cooldownEndTime = Date.now() + objective.data.cooldownLength;
             }
 
-            if(objective.data.target.data.state.health === 1) {
+            if (objective.data.target.data.state.health === 1) {
                 clearObjective(sprite);
             }
             break;
@@ -425,8 +448,8 @@ function perform(sprite, objective) {
         case 'be_dead':
             if (objective.data.endTime < Date.now()) {
                 revive(sprite);
-                sprite.position.x = sprite.data.state.team.base.sprite.position.x + ((Math.random() * 30) - 15);
-                sprite.position.y = sprite.data.state.team.base.sprite.position.y + ((Math.random() * 30) - 15);
+                sprite.position.x = sprite.data.state.team.base.position.x + ((Math.random() * 30) - 15);
+                sprite.position.y = sprite.data.state.team.base.position.y + ((Math.random() * 30) - 15);
                 clearObjective(sprite);
             }
             break;
@@ -451,7 +474,19 @@ function withinErrorOf(error, a, b) {
     return Math.abs(a - b) < error;
 }
 
+function isTower(sprite) {
+    return _.some(game.teams, function(team) {
+        return team.base === sprite;
+    });
+}
+
 function die(sprite) {
+
+    if(isTower(sprite)) {
+        sprite.setTexture(DEAD_TOWER_TEXTURE);
+        return;
+    }
+
     clearObjective(sprite);
     sprite.data.trueTexture = sprite.texture;
     sprite.setTexture(DEAD_CHARACTER_TEXTURE);
@@ -470,10 +505,10 @@ function applyHeal(sprite, heal) {
 }
 
 function applyDamage(sprite, damage) {
-    var trueDamage = damage * ((1 - sprite.data.stats.defense) + (1 - sprite.data.state.fortification)) / 2; // TODO does this computation make sense?
+    var trueDamage = damage * ((1 - (sprite.data.stats.defense || 0) ) + (1 - (sprite.data.state.fortification || 0))) / 2; // TODO does this computation make sense?
     sprite.data.state.health = Math.max(0, sprite.data.state.health - (trueDamage / sprite.data.stats.maxHealth));
 
-    if(sprite.data.state.health === 0) {
+    if (sprite.data.state.health === 0) {
         die(sprite);
     }
 }
