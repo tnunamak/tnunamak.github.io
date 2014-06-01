@@ -8,7 +8,7 @@ var circle;
 
 function preload() {
     game.load.image('background','assets/starfield.png');
-    game.load.spritesheet('ship', 'assets/ship.png', 32, 32, 8);
+    var ship = game.load.spritesheet('ship', 'assets/ship_685x446.png', 685, 446, 8);
 }
 
 function create() {
@@ -16,6 +16,8 @@ function create() {
     game.world.setBounds(0, 0, 1400, 1400);
 
     player = game.add.sprite(width / 2, height / 2, 'ship');
+
+    player.scale.setTo(.12);
 
     game.physics.startSystem(Phaser.Physics.P2JS);
     game.physics.enable(player, Phaser.Physics.P2JS);
