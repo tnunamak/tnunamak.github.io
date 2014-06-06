@@ -1,9 +1,15 @@
 var w = window,
-    d = document,
-    e = d.documentElement,
-    g = d.getElementsByTagName('body')[0],
-    width = w.innerWidth || e.clientWidth || g.clientWidth,
-    height = w.innerHeight || e.clientHeight || g.clientHeight;
+  d = document,
+  e = d.documentElement,
+  g = d.getElementsByTagName('body')[0],
+  width = w.innerWidth || e.clientWidth || g.clientWidth,
+  height = w.innerHeight || e.clientHeight || g.clientHeight;
+
+var MAX_POLYGON_POINTS = 50,
+  SPEED = 1000,
+  MAP_SCALE = 50000,
+  MAP_WIDTH = MAP_SCALE,
+  MAP_HEIGHT = MAP_SCALE;
 
 var game = new Phaser.Game(width, height, Phaser.CANVAS, 'lvls', { preload: preload, create: create, update: update, render: render });
 var keys;
@@ -15,128 +21,147 @@ var load;
 var run = false;
 
 function preload() {
-    game.load.image('background','assets/starfield.png');
-    game.load.image('asteroid','assets/asteroid.png');
-    var ship = game.load.spritesheet('ship', 'assets/ship_685x446.png', 685, 446, 8);
+  game.load.image('background', 'assets/starfield.png');
+  game.load.image('asteroid', 'assets/asteroid.png');
+  game.load.spritesheet('ship', 'assets/single_ship.png', 300, 462, 4);
 
-    var maxPolygonPoints = 50;
+  loadPromises.push(polygonPointsFrom('ship', 'assets/single_ship.png'));
+  loadPromises.push(polygonPointsFrom('asteroid', 'assets/asteroid.png', 977, 606));
 
-    var pointsReceived = boundary.getPoints('assets/asteroid.png', 977, 606)
-        .then(function(points) {
-        polygons.asteroid = _.filter(points, function(point, index){
-            //debugger;
-            return index % Math.round(points.length / maxPolygonPoints) === 0;
-        })
-    });
+  load = $.when.apply(this, loadPromises);
 
-    loadPromises.push(pointsReceived);
+  load.then(function() {
+    run = true;
+  });
+}
 
-    load = $.when.apply(this, loadPromises);
-
-    load.then(function(){
-        run = true;
+function polygonPointsFrom(name, assetPath, width, height) {
+  return boundary.getPoints(assetPath, width, height)
+    .then(function(points) {
+      polygons[name] = _.filter(points, function(point, index) {
+        return index % Math.round(points.length / MAX_POLYGON_POINTS) === 0;
+      })
     });
 }
 
 function create() {
-    load.then(function() {
-        game.add.tileSprite(0, 0, 2000, 2000, 'background');
-        game.world.setBounds(0, 0, 1400, 1400);
-        game.physics.startSystem(Phaser.Physics.P2JS);
-        game.physics.p2.gravity.y = 0;
+  load.then(function() {
+    game.add.tileSprite(0, 0, MAP_WIDTH, MAP_HEIGHT, 'background');
+    game.world.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
+    game.physics.startSystem(Phaser.Physics.P2JS);
+    game.physics.p2.gravity.y = 0;
 
-        player = game.add.sprite(width / 2, height / 2, 'ship');
-        player.scale.setTo(0.2);
-        game.physics.enable(player, Phaser.Physics.P2JS);
+    player = game.add.sprite(MAP_WIDTH / 2, MAP_HEIGHT / 2, 'ship');
 
-        player.body.debug = true;
-        game.camera.follow(player);
+    player.animations.add('forward', [1, 2, 3], 60, true);
 
-        for(var i = 0; i < 5; i++) {
-            var asteroid = game.add.sprite(game.world.randomX, game.world.randomY, 'asteroid');
-            var scale = Math.random() * .5;
-            asteroid.scale.setTo(scale);
-            game.physics.enable(asteroid, Phaser.Physics.P2JS);
-            asteroid.body.addPolygon({
-                skipSimpleCheck: true
-            }, _.map(polygons.asteroid, function(point) {
-                return [point[0] * scale, point[1] * scale];
-            }));
-            asteroid.body.debug = true;
-            asteroid.body.rotation = Math.random() * 2 * Math.PI;
-            asteroid.body.mass = scale;
+    player.scale.setTo(0.2);
+    game.physics.enable(player, Phaser.Physics.P2JS);
+
+    attachPolygon(player, 'ship', 0.2);
+
+    //player.body.debug = true;
+    game.camera.follow(player);
+
+    var asteroids = [];
+
+    function isUnoccupied(x, y) {
+      var threshold = 1000;
+      var unoccupied = true;
+      _.each(asteroids, function(asteroid) {
+        if(!unoccupied) {
+          return;
         }
+        if(Math.abs(asteroid.x - x) < threshold &&
+          Math.abs(asteroid.y - y) < threshold) {
+          unoccupied = false;
+        }
+      });
+      return unoccupied;
+    }
 
-        keys = {
-            w: game.input.keyboard.addKey(Phaser.Keyboard.W),
-            s: game.input.keyboard.addKey(Phaser.Keyboard.S),
-            a: game.input.keyboard.addKey(Phaser.Keyboard.A),
-            d: game.input.keyboard.addKey(Phaser.Keyboard.D)
-        };
-    })
+    for(var i = 0; i < 500; i++) {
+      var x, y, iterations = 0;
+      do {
+        x = game.world.randomX;
+        y = game.world.randomY;
+        iterations++;
+      } while(!isUnoccupied(x, y) || iterations > 100);
+
+      var asteroid = game.add.sprite(x, y, 'asteroid');
+      var scale = Math.random() * .5;
+      asteroid.scale.setTo(scale);
+      game.physics.enable(asteroid, Phaser.Physics.P2JS);
+
+      attachPolygon(asteroid, 'asteroid', scale);
+
+      // TODO I don't know why the default of 0.5, 0.5 doesn't align well with the polygon
+      asteroid.anchor.setTo(0.45, 0.52);
+
+      //asteroid.body.debug = true;
+      asteroid.body.rotation = Math.random() * 2 * Math.PI;
+      asteroid.body.mass = scale;
+
+      asteroids.push(asteroid);
+    }
+
+    keys = {
+      spacebar: game.input.keyboard.addKey(Phaser.Keyboard.SPACEBAR),
+      w: game.input.keyboard.addKey(Phaser.Keyboard.W),
+      s: game.input.keyboard.addKey(Phaser.Keyboard.S),
+      a: game.input.keyboard.addKey(Phaser.Keyboard.A),
+      d: game.input.keyboard.addKey(Phaser.Keyboard.D)
+    };
+  });
+}
+
+function attachPolygon(sprite, polygonName, scale) {
+  scale = scale || 1;
+  sprite.body.addPolygon({
+    skipSimpleCheck: true
+  }, _.map(polygons[polygonName], function(point) {
+    return [point[0] * scale, point[1] * scale];
+  }));
 }
 
 function update() {
-    if(!run) {
-        return;
+  if(!run) {
+    return;
+  }
+  player.body.angularAcceleration = 0;
+
+  var acceleration = 500;
+  var angularAcceleration = Math.PI / 10;
+  var animation;
+
+  if(keys.w.isDown) {
+    player.body.thrust(acceleration);
+    animation = player.animations.getAnimation('forward');
+    if(!animation.isPlaying) {
+      animation.play();
     }
+  } else {
+    player.frame = 0;
+  }
 
-    //player.body.setZeroVelocity();
-    player.body.rotation = 0;
+  if(keys.s.isDown) {
+    player.body.reverse(acceleration);
+  }
 
-    move();
+  if(keys.a.isDown) {
+    player.body.angularVelocity -= angularAcceleration;
+  }
+
+  if(keys.d.isDown) {
+    player.body.angularVelocity += angularAcceleration;
+  }
+
+
 }
 
 function render() {
-    if(!run) {
-        return;
-    }
-}
+  if(!run) {
+    return;
+  }
 
-function move() {
-    var vec;
-    var distance = 200;
-    var diagonal_x = Math.cos(Math.PI / 6);
-    var diagonal_y = Math.cos(Math.PI / 3);
-
-    function updatePlayer(frame, x, y) {
-        player.frame = frame;
-        var vel = player.body.velocity;
-        player.body.moveRight(x * distance);
-        player.body.moveUp(y * distance);
-        player.body.velocity = vel;
-    }
-    var vert, hor;
-
-    if(keys.w.isDown) {
-        vert = 'n';
-    }  else if(keys.s.isDown) {
-        vert = 's';
-    }
-
-    if(keys.d.isDown) {
-        hor = 'e';
-    } else if(keys.a.isDown) {
-        hor = 'w';
-    }
-
-    if(!vert && !hor) {
-        return;
-    }
-    var cardinality = vert ? vert + (hor ? hor : '') : hor;
-
-    switch(cardinality) {
-        case 'n':  vec = [0, 0, diagonal_y]; break;
-        case 'ne': vec = [1, diagonal_x, diagonal_y]; break;
-        case 'e':  vec = [2, diagonal_x, 0]; break;
-        case 'se': vec = [3, diagonal_x, -diagonal_y]; break;
-        case 's':  vec = [4, 0, -diagonal_y]; break;
-        case 'sw': vec = [5, -diagonal_x, -diagonal_y]; break;
-        case 'w':  vec = [6, -diagonal_x, 0]; break;
-        case 'nw': vec = [7, -diagonal_x, diagonal_y]; break;
-    }
-
-    if(vec) {
-        updatePlayer.apply(this, vec);
-    }
 }
