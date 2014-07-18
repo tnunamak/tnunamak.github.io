@@ -1,6 +1,3 @@
 [submodule "tech-radar"]
 	path = tech-radar
 	url = https://github.com/tnunamak/tech-radar
-[submodule "resume"]
-	path = resume
-	url = https://github.com/tnunamak/resume
