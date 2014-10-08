@@ -1,6 +1,9 @@
 [submodule "tech-radar"]
 	path = tech-radar
 	url = https://github.com/tnunamak/tech-radar
+[submodule "vrpanels"]
+	path = vrpanels
+	url = https://github.com/tnunamak/vrpanels
 [submodule "vr-product"]
 	path = vr-product
 	url = https://github.com/tnunamak/vr-product.git
